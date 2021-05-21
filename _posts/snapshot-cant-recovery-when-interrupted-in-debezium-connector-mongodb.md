@@ -1,4 +1,6 @@
 ---
+layout: post
+category: example
 title: snapshot can't recovery when interrupted in debezium-connector-mongodb
 tags:
   - kafka
