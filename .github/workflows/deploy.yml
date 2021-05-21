@@ -2,7 +2,7 @@ name: 'Automatic build'
 on:
   push:
     branches:
-      - main
+      - master
 jobs:
   jekyll:
     runs-on: ubuntu-16.04
