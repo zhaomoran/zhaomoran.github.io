@@ -1,5 +1,5 @@
 ---
-title: debezium-connector-mongodb任务重启后无法重新Snapshot
+title: debezium-connector-mongodb任务重启后无法重新snapshot
 author: Moran
 date: 2021-05-22 09:55:00 +0800
 categories: [中间件]
@@ -10,8 +10,6 @@ mermaid: true
 > 主要解决新建debezium-connector-mongodb作业时，未完成的多线程snapshot任务重启后无法重新进行snapshot，进而导致的数据丢失问题。主要涉及的技术有：多线程、JAVA8函数式接口、
 
 ## 问题发现
-
----
 
 新建debezium-connector-mongodb 作业（1.2.5.Final）时，**由于kafka-connector distribute部署模式下会进行rebalance**，导致**task进行重启操作**。发现重启后的**未完成的snapshot任务未重新运行，导致snapshot阶段的数据丢失**，[官方文档](https://debezium.io/documentation/reference/1.2/connectors/mongodb.html#mongodb-performing-a-snapshot)表述该过程应为
 
@@ -42,8 +40,6 @@ mermaid: true
 
 
 ## 问题分析
-
----
 
 从debezium-connector-mongodb[官方文档](https://debezium.io/documentation/reference/1.2/connectors/mongodb.html#mongodb-performing-a-snapshot)可以得知**是否进行snapshot在于offset是否被kafka connect存储，存储的offset是否可用**，而通过debug可以发现不管是否完成，kafka connect中均存储了offset，**但未完成的value中 initsync为true, 而多线程下未完成snapshot的情况下initsync消失(异常的地方)**
 
@@ -181,8 +177,6 @@ bufferedEvent = () -> {
 
 ## 问题复现
 
----
-
 1. 创建一个数据量较大的，且拥有多个表的Mongo数据库，以免snapshot过快完成
 
 2. 创建一个多线程snapshot的mongo作业启动后稍待10s，重启task（非重启作业）
@@ -192,7 +186,5 @@ bufferedEvent = () -> {
 
 
 ## 问题修复
-
----
 
 **多线程发生`InterruptedException`时虽然吞掉了异常，但会将abort置为true，在所有的线程shutdown后，通过检测abort主动抛出`InterruptedException`，主动结束后续流程。**
