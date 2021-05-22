@@ -49,7 +49,7 @@ mermaid: true
 
 * snapshot进行时offset为
 
-  ```properties
+  ```json
   key：
   ["mimimi_mongo_test_mongo_mrzhao_3479", {
   	"rs": "replSet30017",
@@ -67,7 +67,7 @@ mermaid: true
 
 * snapshot完成后offset为
 
-  ```properties
+  ```json
   key：
   ["mimimi_mongo_test_mongo_mrzhao_3479",{
   	"rs":"replSet30017",
