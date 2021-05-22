@@ -17,7 +17,7 @@ timezone: Asia/Shanghai
 # --------------------------
 title: Moran              # the main title
 
-tagline: Moran's Tech Blog   # it will display as the sub-title
+tagline: A programmer's Tech blog   # it will display as the sub-title
 
 description: >-                        # used by seo meta and the atom feed
   A minimal, portfolio, sidebar,
@@ -37,7 +37,7 @@ social:
   # Change to your full name.
   # It will be displayed as the default author of the posts and the copyright owner in the Footer
   name: Moran Zhao
-  email: imrzhao.qq.com             # change to your email address
+  email: imrzhao@qq.com             # change to your email address
   links:
     # The first element serves as the copyright owner's link
     - https://github.com/zhaomoran       # change to your github homepage

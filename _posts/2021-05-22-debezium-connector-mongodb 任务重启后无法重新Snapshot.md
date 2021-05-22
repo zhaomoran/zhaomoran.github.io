@@ -7,7 +7,7 @@ tags: [kafka,kafka-connect,debezuim]
 mermaid: true
 ---
 
-> 主要解决新建debezium-connector-mongodb作业时，未完成的多线程snapshot任务重启后无法重新进行snapshot，进而导致的数据丢失问题。主要涉及的技术有：多线程、JAVA8函数式接口
+> 主要解决新建debezium-connector-mongodb作业时，未完成的多线程snapshot任务重启后无法重新进行snapshot，进而导致的数据丢失问题。主要涉及的技术有：多线程、JAVA8函数式接口、
 
 #### 问题发现
 
