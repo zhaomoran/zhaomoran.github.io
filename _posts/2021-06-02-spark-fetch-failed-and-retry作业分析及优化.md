@@ -1,5 +1,5 @@
 ---
-title: spark fetch failed and retry作业分析及优化
+title: spark-fetch-failed-and-retry作业分析及优化
 author: Moran
 date: 2021-06-02 18:02:00 +0800
 categories: [中间件]
