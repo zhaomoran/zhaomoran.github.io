@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.0">
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.3/css/all.min.css" integrity="sha256-2H3fkXt6FEmrReK448mDVGKb3WW2ZZw35gI7vqHOE4Y=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/animate.css@3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"zhaomoran.github.io","root":"/","images":"/images","scheme":"Gemini","version":"8.6.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":true,"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"motion":{"enable":true,"async":true,"transition":{"post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+<meta name="description" content="主要分析spark出现的fetch failed及retry的原因，对作业进行优化，降低运行时长和资源消耗，其中主要涉及的知识有 Failed while starting block fetches异常、repartition 和 coalesce算子、Stage Retry、TaskCommitDenied异常">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Spark 作业 Fetch Failed &amp; Retry 分析及优化">
+<meta property="og:url" content="http://zhaomoran.github.io/2021/06/02/2021-06-02-spark%E4%BD%9C%E4%B8%9Afetch-failed-and-retry%E5%88%86%E6%9E%90%E5%8F%8A%E4%BC%98%E5%8C%96/index.html">
+<meta property="og:site_name" content="Coding Tech">
+<meta property="og:description" content="主要分析spark出现的fetch failed及retry的原因，对作业进行优化，降低运行时长和资源消耗，其中主要涉及的知识有 Failed while starting block fetches异常、repartition 和 coalesce算子、Stage Retry、TaskCommitDenied异常">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://raw.githubusercontent.com/zhaomoran/markdown/master/img/image-20210602103532019.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/zhaomoran/markdown/master/img/image-20210602104133124.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/zhaomoran/markdown/master/img/image-20210602112353531.png">
+<meta property="article:published_time" content="2021-06-02T02:02:00.000Z">
+<meta property="article:modified_time" content="2021-08-03T12:05:41.112Z">
+<meta property="article:author" content="Moran">
+<meta property="article:tag" content="Troubleshoot">
+<meta property="article:tag" content="spark">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://raw.githubusercontent.com/zhaomoran/markdown/master/img/image-20210602103532019.png">
+
+
+<link rel="canonical" href="http://zhaomoran.github.io/2021/06/02/2021-06-02-spark%E4%BD%9C%E4%B8%9Afetch-failed-and-retry%E5%88%86%E6%9E%90%E5%8F%8A%E4%BC%98%E5%8C%96/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://zhaomoran.github.io/2021/06/02/2021-06-02-spark%E4%BD%9C%E4%B8%9Afetch-failed-and-retry%E5%88%86%E6%9E%90%E5%8F%8A%E4%BC%98%E5%8C%96/","path":"2021/06/02/2021-06-02-spark作业fetch-failed-and-retry分析及优化/","title":"Spark 作业 Fetch Failed & Retry 分析及优化"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>Spark 作业 Fetch Failed & Retry 分析及优化 | Coding Tech</title>
+  
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+        <span class="toggle-line"></span>
+        <span class="toggle-line"></span>
+        <span class="toggle-line"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <h1 class="site-title">Coding Tech</h1>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  <ul class="main-menu menu">
+        <li class="menu-item menu-item-home"><a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a></li>
+        <li class="menu-item menu-item-about"><a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a></li>
+        <li class="menu-item menu-item-tags"><a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a></li>
+        <li class="menu-item menu-item-archives"><a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a></li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+        
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%97%AE%E9%A2%98%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">问题背景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%88%86%E6%9E%90%E8%BF%87%E7%A8%8B"><span class="nav-number">2.</span> <span class="nav-text">分析过程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BD%9C%E4%B8%9A%E4%BC%98%E5%8C%96"><span class="nav-number">3.</span> <span class="nav-text">作业优化</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BC%98%E5%8C%96%E6%95%88%E6%9E%9C"><span class="nav-number">4.</span> <span class="nav-text">优化效果</span></a></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-overview">
+            <div class="site-author site-overview-item animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="Moran"
+      src="/images/avatar.jpeg">
+  <p class="site-author-name" itemprop="name">Moran</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap site-overview-item animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="sidebar-dimmer"></div>
+
+
+    </header>
+
+    
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://zhaomoran.github.io/2021/06/02/2021-06-02-spark%E4%BD%9C%E4%B8%9Afetch-failed-and-retry%E5%88%86%E6%9E%90%E5%8F%8A%E4%BC%98%E5%8C%96/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpeg">
+      <meta itemprop="name" content="Moran">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Coding Tech">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Spark 作业 Fetch Failed & Retry 分析及优化
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2021-06-02 10:02:00" itemprop="dateCreated datePublished" datetime="2021-06-02T10:02:00+08:00">2021-06-02</time>
+    </span>
+      <span class="post-meta-item">
+        <span class="post-meta-item-icon">
+          <i class="far fa-calendar-check"></i>
+        </span>
+        <span class="post-meta-item-text">更新于</span>
+        <time title="修改时间：2021-08-03 20:05:41" itemprop="dateModified" datetime="2021-08-03T20:05:41+08:00">2021-08-03</time>
+      </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-folder"></i>
+      </span>
+      <span class="post-meta-item-text">分类于</span>
+        <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+          <a href="/categories/%E4%B8%AD%E9%97%B4%E4%BB%B6/" itemprop="url" rel="index"><span itemprop="name">中间件</span></a>
+        </span>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+        <blockquote>
+<p>主要分析spark出现的fetch failed及retry的原因，对作业进行优化，降低运行时长和资源消耗，其中主要涉及的知识有 <code>Failed while starting block fetches异常</code>、<code>repartition</code> 和 <code>coalesce</code>算子、<code>Stage Retry</code>、<code>TaskCommitDenied异常</code></p>
+</blockquote>
+<span id="more"></span>
+
+<h2 id="问题背景"><a href="#问题背景" class="headerlink" title="问题背景"></a>问题背景</h2><p>用户反馈作业application_1619512295487_1025286运行较慢，占用较多资源影响到后续任务的运行，任务为通过Ozzie提交的spark action，其中主要涉及到DF读取hdfs数据，通过一系列的sql运算后，写回到hdfs。</p>
+<h2 id="分析过程"><a href="#分析过程" class="headerlink" title="分析过程"></a>分析过程</h2><ol>
+<li><p>整个作业分为两个job，job-0运行时间段、stage少、task少，<strong>job-1运行时间长、task多、具有失败的stage和task，着重分析job-1</strong>，job-1主要包括stage-1和stage-2。</p>
+<p><img src="https://raw.githubusercontent.com/zhaomoran/markdown/master/img/image-20210602103532019.png" alt="image-20210602103532019"></p>
+</li>
+<li><p>stage-1和stage-2存在多次retry，且stage-2存在Failed Stage，整理执行顺序如下（页面展示的stage信息中时间不准）,<strong>在分析了stage-1和stage-0的task统计中没有发现明显的数据倾斜和长尾任务，着重对任务的retry和failed原因进行分析。</strong></p>
+<p><img src="https://raw.githubusercontent.com/zhaomoran/markdown/master/img/image-20210602104133124.png" alt="image-20210602104133124"></p>
+<pre class="mermaid">
+gantt
+title stage 运行时序图
+section Stage-1
+stage-1-0 : 2021-05-31 09:27:31, 1h
+stage-1-1 : 2021-05-31 10:39:32, 510s
+stage-1-2 : 2021-05-31 10:48:07, 342s
+stage-1-3 : 2021-05-31 10:53:51, 13s
+section Stage-2
+stage-2-0 : 2021-05-31 10:29:52, 32m
+stage-2-1 : 2021-05-31 10:54:04, 42m
+   
+</pre></li>
+<li><p>分析stage-2-0失败原因中，可以发现失败的原因<strong>为<code>FetchFailed</code>异常</strong>，这一步是stage-2在从executor上拉取stage-1产生的shuffle数据（比较奇怪的是为啥没走extranal shuffle service，而是直接从executor拉取），在失败task所在的executor上找到错误日志进行详细的分析，可以看到<strong>成功的连上了<code>248</code>，发出request后120s都没有响应数据，认定<code>connection is dead</code>。</strong></p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">21</span>/<span class="number">05</span>/<span class="number">31</span> <span class="number">10</span>:<span class="number">30</span>:<span class="number">10</span> INFO TransportClientFactory: Successfully created connection to bja-pro0337.******.****.******.**<span class="comment">/**.**.**.221:43552 after 0 ms (0 ms spent in bootstraps)</span></span><br><span class="line"><span class="comment">21/05/31 10:30:15 INFO TransportClientFactory: Successfully created connection to bja-pro0185.******.****.******.**/</span>**.**.**<span class="number">.63</span>:<span class="number">35415</span> after <span class="number">6</span> ms (<span class="number">0</span> ms spent in bootstraps)</span><br><span class="line"><span class="number">21</span>/<span class="number">05</span>/<span class="number">31</span> <span class="number">10</span>:<span class="number">30</span>:<span class="number">16</span> INFO TransportClientFactory: Successfully created connection to bja-pro0307.******.****.******.**<span class="comment">/**.**.**.177:32964 after 1 ms (0 ms spent in bootstraps)</span></span><br><span class="line"><span class="comment">21/05/31 10:30:38 INFO TransportClientFactory: Successfully created connection to bja-pro0350.******.****.******.**/</span>**.**.**<span class="number">.137</span>:<span class="number">43786</span> after <span class="number">1</span> ms (<span class="number">0</span> ms spent in bootstraps)</span><br><span class="line"><span class="number">21</span>/<span class="number">05</span>/<span class="number">31</span> <span class="number">10</span>:<span class="number">30</span>:<span class="number">38</span> INFO TransportClientFactory: Successfully created connection to bja-pro0164.******.****.******.**<span class="comment">/**.**.**.42:34704 after 1 ms (0 ms spent in bootstraps)</span></span><br><span class="line"><span class="comment">21/05/31 10:30:41 INFO TransportClientFactory: Successfully created connection to bja-pro0248.******.****.******.**/</span>**.**.**<span class="number">.54</span>:<span class="number">46616</span> after <span class="number">17</span> ms (<span class="number">0</span> ms spent in bootstraps)</span><br><span class="line"><span class="number">21</span>/<span class="number">05</span>/<span class="number">31</span> <span class="number">10</span>:<span class="number">30</span>:<span class="number">44</span> INFO TransportClientFactory: Successfully created connection to bja-pro0308.******.****.******.**<span class="comment">/**.**.**.178:35614 after 1 ms (0 ms spent in bootstraps)</span></span><br><span class="line"><span class="comment">21/05/31 10:31:15 INFO TransportClientFactory: Successfully created connection to bja-pro0348.******.****.******.**/</span>**.**.**<span class="number">.244</span>:<span class="number">42441</span> after <span class="number">10</span> ms (<span class="number">0</span> ms spent in bootstraps)</span><br><span class="line"><span class="number">21</span>/<span class="number">05</span>/<span class="number">31</span> <span class="number">10</span>:<span class="number">33</span>:<span class="number">13</span> ERROR TransportChannelHandler: Connection to bja-pro0248.******.****.******.**<span class="comment">/**.**.**.54:46616 has been quiet for 120000 ms while there are outstanding requests. Assuming connection is dead; please adjust spark.network.timeout if this is wrong.</span></span><br><span class="line"><span class="comment">21/05/31 10:33:13 ERROR TransportResponseHandler: Still have 9 requests outstanding when connection from bja-pro0248.******.****.******.**/</span>**.**.**<span class="number">.54</span>:<span class="number">46616</span> is closed</span><br><span class="line"><span class="number">21</span>/<span class="number">05</span>/<span class="number">31</span> <span class="number">10</span>:<span class="number">33</span>:<span class="number">13</span> ERROR OneForOneBlockFetcher: Failed <span class="keyword">while</span> starting block fetches</span><br><span class="line">java.io.IOException: Connection from bja-pro0248.******.****.******.**<span class="comment">/**.**.**.54:46616 closed</span></span><br><span class="line"><span class="comment">	at org.apache.spark.network.client.TransportResponseHandler.channelInactive(TransportResponseHandler.java:146)</span></span><br><span class="line"><span class="comment">	at org.apache.spark.network.server.TransportChannelHandler.channelInactive(TransportChannelHandler.java:108)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:245)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:231)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.fireChannelInactive(AbstractChannelHandlerContext.java:224)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.ChannelInboundHandlerAdapter.channelInactive(ChannelInboundHandlerAdapter.java:75)</span></span><br><span class="line"><span class="comment">	at io.netty.handler.timeout.IdleStateHandler.channelInactive(IdleStateHandler.java:277)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:245)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:231)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.fireChannelInactive(AbstractChannelHandlerContext.java:224)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.ChannelInboundHandlerAdapter.channelInactive(ChannelInboundHandlerAdapter.java:75)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:245)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:231)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.fireChannelInactive(AbstractChannelHandlerContext.java:224)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.ChannelInboundHandlerAdapter.channelInactive(ChannelInboundHandlerAdapter.java:75)</span></span><br><span class="line"><span class="comment">	at org.apache.spark.network.util.TransportFrameDecoder.channelInactive(TransportFrameDecoder.java:182)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:245)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:231)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.fireChannelInactive(AbstractChannelHandlerContext.java:224)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.DefaultChannelPipeline$HeadContext.channelInactive(DefaultChannelPipeline.java:1354)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:245)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:231)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.DefaultChannelPipeline.fireChannelInactive(DefaultChannelPipeline.java:917)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannel$AbstractUnsafe$8.run(AbstractChannel.java:822)</span></span><br><span class="line"><span class="comment">	at io.netty.util.concurrent.AbstractEventExecutor.safeExecute(AbstractEventExecutor.java:163)</span></span><br><span class="line"><span class="comment">	at io.netty.util.concurrent.SingleThreadEventExecutor.runAllTasks(SingleThreadEventExecutor.java:403)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:463)</span></span><br><span class="line"><span class="comment">	at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:858)</span></span><br><span class="line"><span class="comment">	at io.netty.util.concurrent.DefaultThreadFactory$DefaultRunnableDecorator.run(DefaultThreadFactory.java:138)</span></span><br><span class="line"><span class="comment">	at java.lang.Thread.run(Thread.java:745)</span></span><br><span class="line"><span class="comment">21/05/31 10:33:13 INFO RetryingBlockFetcher: Retrying fetch (1/3) for 57 outstanding blocks after 5000 ms</span></span><br><span class="line"><span class="comment">21/05/31 10:33:13 ERROR OneForOneBlockFetcher: Failed while starting block fetches</span></span><br><span class="line"><span class="comment">java.io.IOException: Connection from bja-pro0248.******.****.******.**/</span>**.**.**<span class="number">.54</span>:<span class="number">46616</span> closed</span><br><span class="line">	at org.apache.spark.network.client.TransportResponseHandler.channelInactive(TransportResponseHandler.java:<span class="number">146</span>)</span><br><span class="line">	at org.apache.spark.network.server.TransportChannelHandler.channelInactive(TransportChannelHandler.java:<span class="number">108</span>)</span><br><span class="line">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:<span class="number">245</span>)</span><br><span class="line">	at io.netty.channel.AbstractChannelHandlerContext.invokeChannelInactive(AbstractChannelHandlerContext.java:<span class="number">231</span>)</span><br></pre></td></tr></table></figure></li>
+<li><p>分析<code>248</code>日志可以发现<code>228</code> <code>10:31:28</code>连接后，<code>10:33:48</code>才回应数据，报错<code>java.io.IOException: Broken pipe</code>，这个报错的含义是传输管道被关闭，<strong>大致复盘一下，<code>228</code>发起请求，120s未收到回应，关闭连接，<code>248</code>响应数据发现连接被关闭，报错GG。在后续集群空闲时复现该过程，出现了同样的错误，对GC进行了观测未发现异常，但磁盘IO飙高，怀疑是磁盘瓶颈导致的响应慢。</strong></p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">21</span>/<span class="number">05</span>/<span class="number">31</span> <span class="number">10</span>:<span class="number">30</span>:<span class="number">57</span> INFO TransportClientFactory: Successfully created connection to bja-pro0348.******.****.******.**<span class="comment">/**.**.**.244:42441 after 1 ms (0 ms spent in bootstraps)</span></span><br><span class="line"><span class="comment">21/05/31 10:30:57 INFO TransportClientFactory: Successfully created connection to bja-pro0148.******.****.******.**/</span>**.**.**<span class="number">.26</span>:<span class="number">38880</span> after <span class="number">0</span> ms (<span class="number">0</span> ms spent in bootstraps)</span><br><span class="line"><span class="number">21</span>/<span class="number">05</span>/<span class="number">31</span> <span class="number">10</span>:<span class="number">31</span>:<span class="number">28</span> INFO TransportClientFactory: Successfully created connection to bja-pro0273.******.****.******.**<span class="comment">/**.**.**.162:33405 after 0 ms (0 ms spent in bootstraps)</span></span><br><span class="line"><span class="comment">21/05/31 10:31:28 INFO TransportClientFactory: Successfully created connection to bja-pro0322.******.****.******.**/</span>**.**.**<span class="number">.228</span>:<span class="number">37998</span> after <span class="number">1</span> ms (<span class="number">0</span> ms spent in bootstraps)</span><br><span class="line"><span class="number">21</span>/<span class="number">05</span>/<span class="number">31</span> <span class="number">10</span>:<span class="number">33</span>:<span class="number">43</span> ERROR TransportRequestHandler: Error sending result RpcResponse&#123;requestId=<span class="number">6451558532535963872</span>, body=NioManagedBuffer&#123;buf=java.nio.HeapByteBuffer[pos=<span class="number">0</span> lim=<span class="number">13</span> cap=<span class="number">13</span>]&#125;&#125; to <span class="comment">/**.**.**.228:34498; closing connection</span></span><br><span class="line"><span class="comment">java.io.IOException: Broken pipe</span></span><br><span class="line"><span class="comment">	at sun.nio.ch.FileDispatcherImpl.write0(Native Method)</span></span><br><span class="line"><span class="comment">	at sun.nio.ch.SocketDispatcher.write(SocketDispatcher.java:47)</span></span><br><span class="line"><span class="comment">	at sun.nio.ch.IOUtil.writeFromNativeBuffer(IOUtil.java:93)</span></span><br><span class="line"><span class="comment">	at sun.nio.ch.IOUtil.write(IOUtil.java:65)</span></span><br><span class="line"><span class="comment">	at sun.nio.ch.SocketChannelImpl.write(SocketChannelImpl.java:471)</span></span><br><span class="line"><span class="comment">	at org.apache.spark.network.protocol.MessageWithHeader.copyByteBuf(MessageWithHeader.java:148)</span></span><br><span class="line"><span class="comment">	at org.apache.spark.network.protocol.MessageWithHeader.transferTo(MessageWithHeader.java:111)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.socket.nio.NioSocketChannel.doWriteFileRegion(NioSocketChannel.java:355)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.nio.AbstractNioByteChannel.doWrite(AbstractNioByteChannel.java:224)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.socket.nio.NioSocketChannel.doWrite(NioSocketChannel.java:382)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannel$AbstractUnsafe.flush0(AbstractChannel.java:934)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.flush0(AbstractNioChannel.java:362)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannel$AbstractUnsafe.flush(AbstractChannel.java:901)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.DefaultChannelPipeline$HeadContext.flush(DefaultChannelPipeline.java:1321)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeFlush0(AbstractChannelHandlerContext.java:776)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.invokeFlush(AbstractChannelHandlerContext.java:768)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.AbstractChannelHandlerContext.flush(AbstractChannelHandlerContext.java:749)</span></span><br><span class="line"><span class="comment">	at io.netty.channel.ChannelOutboundHandlerAdapter.flush(ChannelOutboundHandlerAdapter.java:115)</span></span><br></pre></td></tr></table></figure></li>
+<li><p>关于重试相关的解释如下：错误主要来源于两个executor<code>bja-pro0248.******.****.******.**, 46616</code>及<code>bja-pro0253.******.****.******.**, 42168</code>，stage-1-1（705个任务）和stage-1-2（967）分别就是这两个executor在stage-1-0时跑的任务数，<strong>重试的原因：stage-2-0从两个executor上拉取多个block失败后，这两个executor上stage-1阶段的shuffle数据被认为不可用，进而重试stage-1上这两个executor所有的task。</strong></p>
+<p><img src="https://raw.githubusercontent.com/zhaomoran/markdown/master/img/image-20210602112353531.png" alt="image-20210602112353531"></p>
+</li>
+<li><p><strong>关于<code>TaskCommitDenied (Driver denied task commit)</code>的解释为，任务并行运行谁先跑完，另一个就会被拒绝。</strong>在时序图中可以发现stage-2-0和stage-2-1存在部分交叉时间。stage-2-1启动时，stage-2-0已经运行成功20个task、正在运行11个任务、失败51个任务，此时stage-2-1计划运行236个task，运行过程中stage-2-0又有10个运行成功，所以stage-2-1有10个任务报错<code>TaskCommitDenied</code>，同理stage-2-0中有一个任务被stage-2-1运行成功，同样报错<code>TaskCommitDenied</code></p>
+</li>
+<li><p>总结：<strong>任务在shuffle阶段共计产生了13276个task，共计shuffle了528GB数据，在reduce阶段出现了读磁盘瓶颈导致shuffle read出现超时，进而导致前置shuffle task重跑</strong></p>
+</li>
+</ol>
+<h2 id="作业优化"><a href="#作业优化" class="headerlink" title="作业优化"></a>作业优化</h2><p>在问题分析的过程中发现，stage-2仅使用了一个shuffle算子，通过用户提供的代码发现用户在此处使用了repartion算子实现前置13276 task数据的合并以减少写入hdfs文件数，在这里可以使用coalesce算子，移除掉shuffle过程。</p>
+<pre class="mermaid">
+graph TB
+subgraph coalesce
+a2 &amp; b2--&gt;d2
+c2--&gt;e2
+end
+subgraph repartion
+a1 &amp; b1 &amp; c1--&gt;d1
+a1 &amp; b1 &amp; c1--&gt;e1
+end
+   
+</pre>
+
+<h2 id="优化效果"><a href="#优化效果" class="headerlink" title="优化效果"></a>优化效果</h2><p>在未对资源进行调整的情况下，优化后整个任务运行时长由2.1小时降低1.1小时左右，且中间数据未进行shuffle，降低磁盘的读写消耗。</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Troubleshoot/" rel="tag"># Troubleshoot</a>
+              <a href="/tags/spark/" rel="tag"># spark</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2021/05/21/2021-05-22-debezium-mongodb%E4%BD%9C%E4%B8%9A%E9%87%8D%E5%90%AF%E5%90%8E%E6%97%A0%E6%B3%95%E9%87%8D%E6%96%B0snapshot/" rel="prev" title="Debezium Mongodb 作业重启后无法重新 Snapshot">
+                  <i class="fa fa-chevron-left"></i> Debezium Mongodb 作业重启后无法重新 Snapshot
+                </a>
+            </div>
+            <div class="post-nav-item">
+                <a href="/2021/07/27/2021-07-28-Debezium-Mysql-Snapshot%E6%B5%81%E7%A8%8B%E8%A7%A3%E6%9E%90/" rel="next" title="Debezium Mysql Snapshot 流程解析">
+                  Debezium Mysql Snapshot 流程解析 <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+
+<div class="copyright">
+  &copy; 
+  <span itemprop="copyrightYear">2021</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Moran</span>
+</div>
+
+    </div>
+  </footer>
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@next-theme/pjax@0.5.0/pjax.min.js" integrity="sha256-3NkoLDrmHLTYj7csHIZSr0MHAFTXth7Ua/DDt4MRUAg=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/next-boot.js"></script><script src="/js/pjax.js"></script>
+
+  
+
+
+  <script class="next-config" data-name="mermaid" type="application/json">{"enable":true,"theme":"neutral","js":{"url":"https://cdn.jsdelivr.net/npm/mermaid@8.11.0/dist/mermaid.min.js","integrity":"sha256-sVAx+v/Q7v0Q2xm5vN7h5ccSna6gaLREhG9sF8pKT6I="}}</script>
+  <script src="/js/third-party/tags/mermaid.js"></script>
+
+
+  
+
+
+
+
+
+</body>
+</html>
