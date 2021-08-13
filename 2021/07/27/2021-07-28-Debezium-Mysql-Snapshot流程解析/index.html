@@ -28,7 +28,7 @@
 <meta property="og:description" content="Debezium Mysql Snapshot 对所选表及 Schema 表 [ DDL ] 的全量历史数据进行了读取，该流程是在 Mysql 一致性备份流程 [ Mysql Dump ] 基础上扩展得来，主要的技术点：Transaction、Repeatable Read、FTWRL [ FLUSH TABLES WITH READ LOCK ] 、Binlog 位点。">
 <meta property="og:locale" content="zh_CN">
 <meta property="article:published_time" content="2021-07-27T18:10:00.000Z">
-<meta property="article:modified_time" content="2021-08-07T17:06:59.896Z">
+<meta property="article:modified_time" content="2021-08-13T09:35:21.105Z">
 <meta property="article:author" content="Moran">
 <meta property="article:tag" content="kafka">
 <meta property="article:tag" content="kafka-connect">
@@ -122,7 +122,7 @@
       <div class="sidebar-panel-container">
         <!--noindex-->
         <div class="post-toc-wrap sidebar-panel">
-            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#MySQL-%E4%B8%80%E8%87%B4%E6%80%A7%E5%A4%87%E4%BB%BD"><span class="nav-number">1.</span> <span class="nav-text">MySQL 一致性备份</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Debezium-Snapshot-%E6%B5%81%E7%A8%8B"><span class="nav-number">2.</span> <span class="nav-text">Debezium Snapshot 流程</span></a></li></ol></div>
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#MySQL-%E4%B8%80%E8%87%B4%E6%80%A7%E5%A4%87%E4%BB%BD"><span class="nav-number">1.</span> <span class="nav-text">MySQL 一致性备份</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Debezium-%E5%BF%AB%E7%85%A7%E6%B5%81%E7%A8%8B"><span class="nav-number">2.</span> <span class="nav-text">Debezium 快照流程</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%A8%E5%B1%80%E9%94%81%E6%B5%81%E7%A8%8B"><span class="nav-number">2.1.</span> <span class="nav-text">全局锁流程</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%A1%A8%E7%BA%A7%E9%94%81%E6%B5%81%E7%A8%8B"><span class="nav-number">2.2.</span> <span class="nav-text">表级锁流程</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%97%A0%E9%94%81%E6%B5%81%E7%A8%8B"><span class="nav-number">2.3.</span> <span class="nav-text">无锁流程</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">3.</span> <span class="nav-text">总结</span></a></li></ol></div>
         </div>
         <!--/noindex-->
 
@@ -221,7 +221,7 @@
           <i class="far fa-calendar-check"></i>
         </span>
         <span class="post-meta-item-text">更新于</span>
-        <time title="修改时间：2021-08-08 01:06:59" itemprop="dateModified" datetime="2021-08-08T01:06:59+08:00">2021-08-08</time>
+        <time title="修改时间：2021-08-13 17:35:21" itemprop="dateModified" datetime="2021-08-13T17:35:21+08:00">2021-08-13</time>
       </span>
 
   
@@ -238,31 +238,134 @@
 <span id="more"></span>
 
 <h2 id="MySQL-一致性备份"><a href="#MySQL-一致性备份" class="headerlink" title="MySQL 一致性备份"></a>MySQL 一致性备份</h2><p>对于以 InnoDB 为存储引擎的 MySQL 数据库，MySQL Dump 可以通过添加 –single-transaction 参数来保证备份后数据的一致性（处于同一时刻），其主要通过将事务 [ Transaction ] 的隔离级别设置为 Repeatable Read，对当前时刻的数据库进行快照，保证该事务任何时刻的表读取均和快照点数据一致。 由于 Repeatable Read Transaction 不适用于 Binlog 位点查询，MySQL Dump 通过添加 –master-data 参数来获得一致性 Binlog 位点，其主要使用 FTWRL 技术冻结数据库的一切写入操作，保障 Binlog 位点和事务的一致性，主要步骤如下：</p>
-<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"># 获取全局锁，刷新并冻结 Binlog</span><br><span class="line">FLUSH TABLES;</span><br><span class="line">FLUSH TABLES <span class="keyword">WITH</span> READ LOCK;</span><br><span class="line"></span><br><span class="line"># 设置可重复读隔离级别，启动事务</span><br><span class="line"><span class="keyword">SET</span> SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;</span><br><span class="line"><span class="keyword">START</span> TRANSACTION <span class="keyword">WITH</span> CONSISTENT SNAPSHOT;</span><br><span class="line"></span><br><span class="line"># 获取一致性 Binlog 位点，解锁</span><br><span class="line"><span class="keyword">SHOW</span> MASTER STATUS;</span><br><span class="line">UNLOCK TABLES;</span><br><span class="line">......</span><br></pre></td></tr></table></figure>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"># 获取全局锁，刷新并冻结 Binlog</span><br><span class="line">FLUSH TABLES;</span><br><span class="line">FLUSH TABLES <span class="keyword">WITH</span> READ LOCK;</span><br><span class="line"></span><br><span class="line"># 设置可重复读隔离级别，启动事务</span><br><span class="line"><span class="keyword">SET</span> SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;</span><br><span class="line"><span class="keyword">START</span> TRANSACTION <span class="keyword">WITH</span> CONSISTENT SNAPSHOT;</span><br><span class="line"></span><br><span class="line"># 获取一致性 Binlog 位点，解锁</span><br><span class="line"><span class="keyword">SHOW</span> MASTER STATUS;</span><br><span class="line">UNLOCK TABLES;</span><br><span class="line"></span><br><span class="line"># 全量扫描数据表，提交事务</span><br><span class="line">......</span><br></pre></td></tr></table></figure>
 
-<h2 id="Debezium-Snapshot-流程"><a href="#Debezium-Snapshot-流程" class="headerlink" title="Debezium Snapshot 流程"></a>Debezium Snapshot 流程</h2><p>使用全局读锁执行 snapshot 的流程，参考上述 MySQL FTWRL 存在的风险，当遇到了Kafka Connect 日志中有 <code>unable to flush and acquire global read lock</code> 或者报错提示 <code>User does not have the &#39;LOCK TABLES&#39; privilege</code> 说明其 FTWRL 执行异常，可能会导致数据库长时间不可写。</p>
-<ol>
-<li>获取全局锁 [ FLUSH TABLES WITH READ LOCK ]，全库不可写。锁持续到完成 schema 表 snapshot结束，保障 schema、位点、事务的一致性。</li>
-<li>启动 repeatable read 事务确保非 shcema 表数据依次抽取时的一致性。</li>
-<li>读取当前的 binlog 位点。</li>
-<li>读取 schema 数据到内存并写入 schema history topic。</li>
-<li>释放全局锁，此时库可进行写。通常锁库的总时长很短，几秒内即可完成。</li>
-<li>根据设置，选择是否将 schema 数据写入到 schema change topic。</li>
-<li>依次扫描非 shcema 表数据，并写入相应的 serverName.databaseName.tableName 表中。</li>
-<li>提交事务。</li>
-<li>在 connector offsets 中记录完成 snaoshot。</li>
-</ol>
-<p>使用表级锁执行 snapshot 的流程，当无法获取全局锁（一些 RDS 或者特殊的数据库不允许使用全局锁），全局锁 snapshot 流程会退化为表级锁 snapshot 流程 （要求赋予用户 LOCK_TABLES 权限）。</p>
-<ol>
-<li>启动 repeatable read 事务确保非 shcema 表数据依次抽取时的一致性。</li>
-<li>获取表级锁 [ FLUSH TABLES xxxxxx WITH READ LOCK  ]。</li>
-<li>读取当前的 binlog 位点。</li>
-<li>读取 schema 数据并写入 schema history topic。</li>
-<li>根据设置，选择是否将 schema 数据到内存并写入到 schema change topic。</li>
-<li>依次扫描非 shcema 表数据，并写入相应的 serverName.databaseName.tableName 表中。</li>
-<li>提交事务。</li>
-<li>释放表级锁，此时库可进行写。通常锁库的时间较长，几乎持续了整个 snapshot 时长。</li>
-<li>在 connector offsets 中记录完成 snaoshot。</li>
+<h2 id="Debezium-快照流程"><a href="#Debezium-快照流程" class="headerlink" title="Debezium 快照流程"></a>Debezium 快照流程</h2><p>本文是基于 <a target="_blank" rel="noopener" href="https://github.com/debezium/debezium/releases/tag/v1.2.5.Final">v1.2.5.Final</a> 源码进行分析。snapshot 流程主要与锁的等级相关，包括全局锁、表级锁、无锁三种情况。</p>
+<h3 id="全局锁流程"><a href="#全局锁流程" class="headerlink" title="全局锁流程"></a>全局锁流程</h3><table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>获取全局锁，阻止写库。保障 schema、位点、事务的一致性。</td>
+</tr>
+<tr>
+<td>2</td>
+<td>启动 repeatable read 事务确保采集表依次抽取时的数据一致性。</td>
+</tr>
+<tr>
+<td>3</td>
+<td>读取当前的 binlog 位点，读取并过滤库和表的名称。</td>
+</tr>
+<tr>
+<td>4</td>
+<td>将 schema 投递到 db history  topic 和 schema change topic 中。</td>
+</tr>
+<tr>
+<td>5</td>
+<td>释放全局锁，允许写库。通常锁库的总时长很短，几秒内即可完成。</td>
+</tr>
+<tr>
+<td>6</td>
+<td>依次扫描表的数据，并写入相应的 serverName.databaseName.tableName 表中。</td>
+</tr>
+<tr>
+<td>7</td>
+<td>提交事务。</td>
+</tr>
+<tr>
+<td>8</td>
+<td>在 connector offsets 中记录完成 snaoshot。</td>
+</tr>
+</tbody></table>
+<p>参考MySQL 一致性备份中提到的 FTWRL 的风险，当遇到了Kafka Connect 日志中有  <code>unable to flush and acquire global read lock</code>  或者报错提示  <code>User does not have the &#39;LOCK TABLES&#39; privilege</code>  说明其 FTWRL 执行异常，可能会导致数据库长时间不可写。</p>
+<h3 id="表级锁流程"><a href="#表级锁流程" class="headerlink" title="表级锁流程"></a>表级锁流程</h3><p>当无法获取全局锁（一些 RDS 或者特殊的数据库不允许使用全局锁），全局锁 snapshot 流程会退化为表级锁 snapshot 流程 （要求赋予用户 LOCK_TABLES 权限）。</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>启动 repeatable read 事务确保表依次抽取时的数据一致性。</td>
+</tr>
+<tr>
+<td>2</td>
+<td>读取并过滤库和表的名称。</td>
+</tr>
+<tr>
+<td>3</td>
+<td>获取采集表的锁，阻止采集表的写入，读取当前的 binlog 位点。</td>
+</tr>
+<tr>
+<td>4</td>
+<td>读取 schema 投递到 db history  topic 和 schema change topic 中。</td>
+</tr>
+<tr>
+<td>5</td>
+<td>依次扫描表的数据，并写入相应的 serverName.databaseName.tableName 表中。</td>
+</tr>
+<tr>
+<td>6</td>
+<td>提交事务。</td>
+</tr>
+<tr>
+<td>7</td>
+<td>释放表级锁，此时库可进行写。通常锁库的时间较长，几乎持续了整个 snapshot 流程。</td>
+</tr>
+<tr>
+<td>8</td>
+<td>在 connector offsets 中记录完成 snaoshot。</td>
+</tr>
+</tbody></table>
+<p>FTWRL 的风险依然存在，当遇到 <code>Aborting snapshot due to error when last running &#39;FLUSH TABLES **** WITH READ LOCK&#39;</code>  说明其 FTWRL 执行异常，可能会导致数据库长时间不可写。正常流程下从第 3 步至第 7 步始终维持着表级锁，几乎持续了整个 snapshot 流程，依然会导致表长时间不可写。已知Repeatable Read Transaction 不适用于 Binlog 位点查询，在步骤1和步骤3间插入数据，会导致事务和位点的不一致，进而丢失数据，可以通过修改源码将步骤3中的表级锁前移到步骤1之前解决数据丢失问题。</p>
+<h3 id="无锁流程"><a href="#无锁流程" class="headerlink" title="无锁流程"></a>无锁流程</h3><p>为了避免锁带来的风险，可以将参数  <code>snapshot.locking.mode</code> 设置为 <code>none</code>，启用无锁模式。无锁模式下要求整个 snapshot 流程中不可进行 schema 变更操作，以保障 schema 和transaction 的一致性。</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>启动 repeatable read 事务确保表依次抽取时的数据一致性。</td>
+</tr>
+<tr>
+<td>2</td>
+<td>读取并过滤库和表的名称。</td>
+</tr>
+<tr>
+<td>3</td>
+<td>读取当前的 binlog 位点。</td>
+</tr>
+<tr>
+<td>4</td>
+<td>读取 schema 投递到 db history  topic 和 schema change topic 中。</td>
+</tr>
+<tr>
+<td>5</td>
+<td>依次扫描表的数据，并写入相应的 serverName.databaseName.tableName 表中。</td>
+</tr>
+<tr>
+<td>6</td>
+<td>提交事务。</td>
+</tr>
+<tr>
+<td>7</td>
+<td>在 connector offsets 中记录完成 snaoshot。</td>
+</tr>
+</tbody></table>
+<p>已知Repeatable Read Transaction 不适用于 Binlog 位点查询，在步骤1和步骤3间插入数据，会导致事务和位点的不一致，进而丢失数据。通过修改源码将步骤3前移到步骤1前，可以解决数据丢失问题，但会带来数据重复问题。 </p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><ol>
+<li>目前基于 FTWRL 的有锁流程均具有较大的风险，极端情况下会 Hang 住整个数据库（需小心）</li>
+<li>表级锁流程中，具有数据丢失的风险，且表级锁几乎持续了整个 snapshot 流程（不可取）</li>
+<li>无锁流程中，需保证 snapshot 流程中无 schema 变更操作，且具有数据丢失的风险（修改源码可解决）</li>
 </ol>
 
     </div>
