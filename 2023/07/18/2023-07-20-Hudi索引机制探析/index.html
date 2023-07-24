@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.3.0/css/all.min.css" integrity="sha256-/4UQcSmErDzPCMAiuOiWPVVsNN2s3ZY/NsmXNcj0IFc=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pace/1.2.4/themes/blue/pace-theme-minimal.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pace/1.2.4/pace.min.js" integrity="sha256-gqd7YTjg/BtfqWSwsJOvndl0Bxc8gFImLEkXQT8+qj0=" crossorigin="anonymous"></script>
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"zhaomoran.github.io","root":"/","images":"/images","scheme":"Gemini","darkmode":false,"version":"8.15.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":true,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":true,"lazyload":true,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":true,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="Hudi 通过索引机制提供高效的 Upsert&#x2F;Delete 操作，它维护着 HoodieKey 和 FileID 之间的映射关系。在 Upsert 写时，利用索引快速确认记录是新增（I）还是更新（U）以及需要更新文件的位置，以消除不必要的读写。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Hudi索引机制探析">
+<meta property="og:url" content="https://zhaomoran.github.io/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/index.html">
+<meta property="og:site_name" content="Coding Tech">
+<meta property="og:description" content="Hudi 通过索引机制提供高效的 Upsert&#x2F;Delete 操作，它维护着 HoodieKey 和 FileID 之间的映射关系。在 Upsert 写时，利用索引快速确认记录是新增（I）还是更新（U）以及需要更新文件的位置，以消除不必要的读写。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://zhaomoran.github.io/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E8%AE%BE%E8%AE%A1%E5%8F%8A%E5%BA%94%E7%94%A8/with-and-without-index-81d481917e61e4cd1be2426c12994b8b.png">
+<meta property="article:published_time" content="2023-07-18T21:57:00.000Z">
+<meta property="article:modified_time" content="2023-07-24T12:39:26.645Z">
+<meta property="article:author" content="Moran">
+<meta property="article:tag" content="Hudi">
+<meta property="article:tag" content="数据湖">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://zhaomoran.github.io/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E8%AE%BE%E8%AE%A1%E5%8F%8A%E5%BA%94%E7%94%A8/with-and-without-index-81d481917e61e4cd1be2426c12994b8b.png">
+
+
+<link rel="canonical" href="https://zhaomoran.github.io/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"https://zhaomoran.github.io/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/","path":"2023/07/18/2023-07-20-Hudi索引机制探析/","title":"Hudi索引机制探析"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>Hudi索引机制探析 | Coding Tech</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+        <span class="toggle-line"></span>
+        <span class="toggle-line"></span>
+        <span class="toggle-line"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">Coding Tech</p>
+      <i class="logo-line"></i>
+    </a>
+      <p class="site-subtitle" itemprop="description">Quick Note</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  <ul class="main-menu menu"><li class="menu-item menu-item-home"><a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a></li><li class="menu-item menu-item-about"><a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a></li><li class="menu-item menu-item-tags"><a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a></li><li class="menu-item menu-item-archives"><a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a></li>
+  </ul>
+</nav>
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-5"><a class="nav-link" href="#Overview"><span class="nav-number">1.</span> <span class="nav-text">Overview</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Simple-Index"><span class="nav-number">2.</span> <span class="nav-text">Simple Index</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Bloom-Index"><span class="nav-number">3.</span> <span class="nav-text">Bloom Index</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Multi-Modal-Index"><span class="nav-number">4.</span> <span class="nav-text">Multi-Modal Index</span></a></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="Moran"
+      src="/images/avatar.jpeg">
+  <p class="site-author-name" itemprop="name">Moran</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">分类</span>
+      </div>
+      <div class="site-state-item site-state-tags">
+          <a href="/tags/">
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://zhaomoran.github.io/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpeg">
+      <meta itemprop="name" content="Moran">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Coding Tech">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="Hudi索引机制探析 | Coding Tech">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Hudi索引机制探析
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2023-07-19 05:57:00" itemprop="dateCreated datePublished" datetime="2023-07-19T05:57:00+08:00">2023-07-19</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-07-24 20:39:26" itemprop="dateModified" datetime="2023-07-24T20:39:26+08:00">2023-07-24</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-folder"></i>
+      </span>
+      <span class="post-meta-item-text">分类于</span>
+        <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+          <a href="/categories/%E5%A4%A7%E6%95%B0%E6%8D%AE/" itemprop="url" rel="index"><span itemprop="name">大数据</span></a>
+        </span>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+        <p>Hudi 通过索引机制提供高效的 Upsert&#x2F;Delete 操作，它维护着 HoodieKey 和 FileID 之间的映射关系。在 Upsert 写时，利用索引快速确认记录是新增（I）还是更新（U）以及需要更新文件的位置，以消除不必要的读写。</p>
+<span id="more"></span>
+
+<h5 id="Overview"><a href="#Overview" class="headerlink" title="Overview"></a>Overview</h5><p>索引具体过程是将给定的 HoodieKey (RecordKey + PartitionPath) 与 FileID（文件组ID） 建立唯一映射。这种映射关系在数据第一次写入文件后保持不变。所以，一个 文件组 包含了一组记录的所有版本。</p>
+<p>下图为例，白色是基本文件，黄色是更新数据。左边为 Hudi 模型，右边为 Hive ACID 模型，在不具备索引的情况需要全局尝试合并，需要把增量文件和每一个基本文件进行合并(100 + 25 * 8) * 4 &#x3D; 1200MB，具备索引时仅需按照FileGroup分组后再合并，100 * 4 + 25 * 8&#x3D; 600MB。可以发现索引大大降低了了合并的成本。<br><img data-src="/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E8%AE%BE%E8%AE%A1%E5%8F%8A%E5%BA%94%E7%94%A8/with-and-without-index-81d481917e61e4cd1be2426c12994b8b.png" alt="Fact table"></p>
+<p>目前 Hudi 支持以下四种索引，又分为两种类型</p>
+<table>
+<thead>
+<tr>
+<th>索引选项</th>
+<th>原理</th>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Bloom</td>
+<td>每个 Parquet 文件维护一个Bloom Filter，在 File Group 映射阶段，把所有可能更新的分区的文件的 Bloom Filter 加载进来，用来判断 Record Key 是否存在</td>
+<td>效率高，不依赖外部系统</td>
+<td>假阳性问题，还需回溯原文件再查找一遍</td>
+</tr>
+<tr>
+<td>Simple</td>
+<td>在 File Group 映射阶段，把所有可能更新的分区的文件的 HoodieKey 和 FileID 加载进来，使用 Join 判断 Record Key 是否存在</td>
+<td>实现最简单，无需额外的资源</td>
+<td>性能比较差</td>
+</tr>
+<tr>
+<td>HBase</td>
+<td>维护每一个 Record Key 的 Partition Path 和 File Group，在插入 File Group定位阶段所有task 向 HBase 发送 Batch Get 请求，获取 Record Key 的Mapping 信息。</td>
+<td>对于小批次的 keys，查询效率高</td>
+<td>需要外部的系统，增加了运维压力</td>
+</tr>
+<tr>
+<td>Custom</td>
+<td>自定义索引</td>
+<td></td>
+<td></td>
+</tr>
+</tbody></table>
+<p>全局索引：全局索引在全表的所有分区范围下强制要求键的唯一性，也就是确保对给定的键有且只有一个对应的记录。全局索引提供了更强的保证，但是随着表增大，update&#x2F;delete 操作损失的性能越高，因此更适用于小表。</p>
+<p>非全局索引：默认的索引实现，只能保证数据在分区的唯一性。非全局索引依靠写入器为同一个记录的 update&#x2F;delete 提供一致的分区路径，同时大幅提高了效率，更适用于大表。从 Index 的维护成本和写入性能的角度考虑，维护一个 Global Index 的难度更大，对写入性能的影响也更大，所以需要 non-global index。</p>
+<ul>
+<li>事实表的延迟更新：例如交易订单，这些表通常会随着时间而不断增长，较少的长尾更新会指向较旧的数据，这要么是由于稍后的交易结算&#x2F;数据更正所致。换句话说，大多数更新都会进入最新的分区，而很少有更新会进入较旧的分区。适用于Bloom。</li>
+<li>事件表的去重：例如电表度数，事件通常是事实表大小的 10-100 倍，并且通常将“时间”视为一等公民。重复事件大多处于入湖前，且插入和更新仅跨越最后几个时间分区中。适用于Bloom。</li>
+<li>维度表的随机更删：例如商家信息，这些类型的表通常包含高维数据并保存参考数据，更新分布在从旧到新的数据集中的许多分区和数据文件中。通常，这些表无分区。适用于simple。</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Config Name</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>hoodie.index.type</td>
+<td>N&#x2F;A (必选)</td>
+<td>可选值：SIMPLE、GLOBAL_SIMPLE、BLOOM、GLOBAL_BLOOM、INMEMORY、HBASE、BUCKET、FLINK_STATE、RECORD_INDEX <br>Spark默认：SIMPLE，FLINK默认：BLOOM，JAVA默认：BLOOM</td>
+</tr>
+<tr>
+<td>hoodie.index.class</td>
+<td>可选</td>
+<td>用户定义索引类的完整路径，并且必须是 HoodieIndex 类的子类。如果指定，它将优先于 hoodie.index.type 配置</td>
+</tr>
+</tbody></table>
+<h5 id="Simple-Index"><a href="#Simple-Index" class="headerlink" title="Simple Index"></a>Simple Index</h5><p>核心：利用 Parquet 列式存储的优势，仅需扫描 HooieKey 和 FileID 两列少量的数据，即可用于索引查找。</p>
+<ol>
+<li>对于传入的 Upserts 数据，提取分区路径和主键值，组成 HoodieKey。形成 HoodieKey 到 HoodieRecord的映射。</li>
+<li>从数据湖存储中根据分区路径获取所有 Parquet 文件的 HooieKey 和 FileID 数据。形成 HoodieKey 到 HoodieRecordLocation 的映射。</li>
+<li>将两份数据在对应的分区内，使用 HoodieKey 进行 LeftOuterJoin，即可将提取位置信息赋值至传入数据上。</li>
+</ol>
+<h5 id="Bloom-Index"><a href="#Bloom-Index" class="headerlink" title="Bloom Index"></a>Bloom Index</h5><p>核心：使用 Parquet 页脚中的 Bloom 和 Max-Min 数据进行裁剪和过滤减少索引查找时的数据的扫描量。</p>
+<ol>
+<li>对于传入的 Upserts 数据，提取分区路径和主键值，组成 HoodieKey。形成 HoodieKey 到 HoodieRecord的映射。</li>
+<li>从数据湖存储中根据分区路径获取所有 Parquet 文件的页脚数据。页脚数据包含该文件中 HoodieKey 的 Bloom 和最大最小值。</li>
+<li>依据页脚数据中 Hoodiekey 的最大最小值构造线段树，快速的确认传入数据可能存在的 Parquet 文件。</li>
+<li>再利用页脚数据中 Bloom 过滤器，快速的确认传入数据可能存在的 Parquet 文件。</li>
+<li>由于Bloom假阳的可能，对匹配到的 Parquet 文件进一步的判断是否存在于该 Parquet 文件，最终形成形成 HoodieKey 到 HoodieRecordLocation 的映射。</li>
+<li>将两份数据在对应的分区内，使用 HoodieKey 进行 LeftOuterJoin，即可将提取位置信息赋值至传入数据上。</li>
+</ol>
+<h5 id="Multi-Modal-Index"><a href="#Multi-Modal-Index" class="headerlink" title="Multi-Modal Index"></a>Multi-Modal Index</h5><p>然 Hudi 在快速更新插入时充分的利用了索引的优势，但在查询尚未利用这些优势。在 Hudi 0.11.0版本中，通过增强元数据表实现了 Multi-Modal Index，以优化查询和写入事务的性能，特别是对于大型的宽表。同其他系统一致，Kafka 将 consumer_offset 存储成一个 topic ，HBase 将表信息存储成一张 meta 表，Hudi 将具有 Multi-Modal Index 的 MetaData 存储成了内部的一张 MOR 表。目前该表具有 file 、column_stats 、bloom_filter 索引提高读写性能。</p>
+<table>
+<thead>
+<tr>
+<th>Config Name</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>hoodie.metadata.enable</td>
+<td>true (Optional)</td>
+<td>启用内部元数据表，该表提供表元数据，例如 file 、column_stats 、bloom_filter</td>
+</tr>
+<tr>
+<td>hoodie.metadata.index.bloom.filter.enable</td>
+<td>false (Optional)</td>
+<td>在元数据表下启用用户数据文件的索引布隆过滤器。启用后，元数据表将有一个分区来存储布隆过滤器索引，并将在索引查找期间使用。</td>
+</tr>
+<tr>
+<td>hoodie.metadata.index.column.stats.enable</td>
+<td>false (Optional)</td>
+<td>在元数据表键查找下启用用户数据文件的索引列范围。启用后，元数据表将有一个分区来存储列范围，并将用于在索引查找期间修剪文件。</td>
+</tr>
+</tbody></table>
+<p>file 的主要目的是消除对“列表文件”操作的要求。读写数据时，会执行文件列表操作来获取文件系统的当前视图。当数据集很大时，列出所有文件可能会成为性能瓶颈，但更重要的是，对于像AWS S3这样的云存储系统，大量的文件列出请求有时会因某些请求限制而导致限制。元数据表将主动维护文件列表，并消除递归文件列表操作的需要。</p>
+<table>
+<thead>
+<tr>
+<th>Config Name</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>hoodie.metadata.enable</td>
+<td>true (Optional)</td>
+<td>启用内部元数据表，该表提供表元数据，例如 file 、column_stats 、bloom_filter</td>
+</tr>
+<tr>
+<td>hoodie.metadata.index.bloom.filter.enable</td>
+<td>false (Optional)</td>
+<td>在元数据表下启用用户数据文件的索引布隆过滤器。启用后，元数据表将有一个分区来存储布隆过滤器索引，并将在索引查找期间使用。</td>
+</tr>
+<tr>
+<td>hoodie.metadata.index.column.stats.enable</td>
+<td>false (Optional)</td>
+<td>在元数据表键查找下启用用户数据文件的索引列范围。启用后，元数据表将有一个分区来存储列范围，并将用于在索引查找期间修剪文件。</td>
+</tr>
+</tbody></table>
+<p>column_stats 的主要包含了每个文件的列统计信息，例如某一列的 max-min 数据，通过这些统计数据来排除掉不需要读的文件，这样可以极大的提高查询速度。其中每个Record key是由列名称、分区名称和文件名称组成。</p>
+<table>
+<thead>
+<tr>
+<th>Config Name</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>hoodie.metadata.index.column.stats.column.list</td>
+<td><code>N/A</code>(Required)</td>
+<td>启用列统计信息的列，默认所有的列都会呗索引</td>
+</tr>
+</tbody></table>
+<p>bloom_filter 分区取代了footer中的bloom filter，在大表中可以大幅减少文件读取的时间。每条记录包含单个数据文件（partition + file name）的 bloom filter，支持 prefix lookup。</p>
+<table>
+<thead>
+<tr>
+<th>Config Name</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>hoodie.metadata.index.bloom.filter.column.list</td>
+<td><code>N/A</code>(Required)</td>
+<td>启用布隆过滤器的列，默认为主键列</td>
+</tr>
+</tbody></table>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Hudi/" rel="tag"># Hudi</a>
+              <a href="/tags/%E6%95%B0%E6%8D%AE%E6%B9%96/" rel="tag"># 数据湖</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2023/03/30/2023-03-31-gRPC%E5%AE%A2%E6%88%B7%E7%AB%AF%E8%B4%9F%E8%BD%BD%E5%9D%87%E8%A1%A1/" rel="prev" title="gRPC客户端负载均衡">
+                  <i class="fa fa-chevron-left"></i> gRPC客户端负载均衡
+                </a>
+            </div>
+            <div class="post-nav-item">
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+
+<div class="copyright">
+  &copy; 2021 – 
+  <span itemprop="copyrightYear">2023</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Moran</span>
+</div>
+
+    </div>
+  </footer>
+
+  
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/next-theme-pjax/0.6.0/pjax.min.js" integrity="sha256-vxLn1tSKWD4dqbMRyv940UYw4sXgMtYcK6reefzZrao=" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/medium-zoom/1.0.8/medium-zoom.min.js" integrity="sha256-7PhEpEWEW0XXQ0k6kQrPKwuoIomz8R8IYyuU1Qew4P8=" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lozad.js/1.16.0/lozad.min.js" integrity="sha256-mOFREFhqmHeQbXpK2lp4nA3qooVgACfh88fpJftLBbc=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/next-boot.js"></script><script src="/js/pjax.js"></script>
+
+  
+
+  <script class="next-config" data-name="mermaid" type="application/json">{"enable":true,"theme":{"light":"default","dark":"dark"},"js":{"url":"https://cdnjs.cloudflare.com/ajax/libs/mermaid/9.4.0/mermaid.min.js","integrity":"sha256-3JloMMI/ZQx6ryuhhZTsQJQmGAkXeni6PkshX7UUO2s="}}</script>
+  <script src="/js/third-party/tags/mermaid.js"></script>
+
+
+  <script src="/js/third-party/pace.js"></script>
+
+  
+
+
+
+
+
+</body>
+</html>
