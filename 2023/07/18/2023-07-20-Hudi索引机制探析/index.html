@@ -30,7 +30,7 @@
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="https://zhaomoran.github.io/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/with-and-without-index-81d481917e61e4cd1be2426c12994b8b.png">
 <meta property="article:published_time" content="2023-07-18T21:57:00.000Z">
-<meta property="article:modified_time" content="2023-07-27T03:07:45.912Z">
+<meta property="article:modified_time" content="2023-07-29T09:25:23.110Z">
 <meta property="article:author" content="Moran">
 <meta property="article:tag" content="Hudi">
 <meta property="article:tag" content="数据湖">
@@ -118,7 +118,7 @@
       <div class="sidebar-panel-container">
         <!--noindex-->
         <div class="post-toc-wrap sidebar-panel">
-            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-5"><a class="nav-link" href="#Overview"><span class="nav-number">1.</span> <span class="nav-text">Overview</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Simple-Index"><span class="nav-number">2.</span> <span class="nav-text">Simple Index</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Bloom-Index"><span class="nav-number">3.</span> <span class="nav-text">Bloom Index</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Multi-Modal-Index"><span class="nav-number">4.</span> <span class="nav-text">Multi-Modal Index</span></a></li></ol></div>
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-5"><a class="nav-link" href="#Overview"><span class="nav-number">1.</span> <span class="nav-text">Overview</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Simple-Index"><span class="nav-number">2.</span> <span class="nav-text">Simple Index</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Bloom-Index"><span class="nav-number">3.</span> <span class="nav-text">Bloom Index</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Bucket-Index"><span class="nav-number">4.</span> <span class="nav-text">Bucket Index</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#Multi-Modal-Index"><span class="nav-number">5.</span> <span class="nav-text">Multi-Modal Index</span></a></li></ol></div>
         </div>
         <!--/noindex-->
 
@@ -207,7 +207,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-07-27 11:07:45" itemprop="dateModified" datetime="2023-07-27T11:07:45+08:00">2023-07-27</time>
+      <time title="修改时间：2023-07-29 17:25:23" itemprop="dateModified" datetime="2023-07-29T17:25:23+08:00">2023-07-29</time>
     </span>
     <span class="post-meta-item">
       <span class="post-meta-item-icon">
@@ -238,7 +238,7 @@
 
 
 
-<p>目前 Hudi 支持以下四种索引，又分为两种类型</p>
+<p>目前 Hudi 支持以下索引，又分为两种类型</p>
 <table>
 <thead>
 <tr>
@@ -250,19 +250,25 @@
 </thead>
 <tbody><tr>
 <td>Bloom</td>
-<td>每个 Parquet 文件维护一个 Bloom Filter，在索引查找阶段，把所有可能更新的分区的文件的 Bloom Filter 加载进来，用来判断 Record Key 是否存在</td>
+<td>每个 Parquet 文件维护一个 BloomFilter，在索引查找阶段，把所有可能更新的分区的文件的 Bloom Filter 加载进来，用来判断 Record Key 是否存在</td>
 <td>效率高，不依赖外部系统</td>
 <td>假阳性问题，还需回溯原文件再查找一遍</td>
 </tr>
 <tr>
 <td>Simple</td>
-<td>在索引查找阶段，把所有可能更新的分区的文件的 HoodieKey 和 FileID 列加载进来，使用 left outter join 判断 Record Key 是否存在</td>
+<td>在索引查找阶段，把所有可能更新的分区的文件的 HoodieKey 和 FileID 列加载进来，使用 left outter join 判断 RecordKey 是否存在</td>
 <td>实现最简单，无需额外的资源</td>
 <td>性能比较差</td>
 </tr>
 <tr>
+<td>Bucket</td>
+<td>利用 Hash 分区计算出 RecordKey 需要写入或更新的文件，避免索引阶段的 IO 扫描</td>
+<td>效率高</td>
+<td></td>
+</tr>
+<tr>
 <td>HBase</td>
-<td>维护每一个 Record Key 的 Partition Path 和 File Group，在索引查找阶段所有task 向 HBase 发送 Batch Get 请求，获取 Record Key 的Mapping 信息。</td>
+<td>维护每一个 RecordKey 的 PartitionPath 和 FileGroup，在索引查找阶段所有 task 向 HBase 发送 BatchGet 请求，获取 RecordKey 的Mapping 信息。</td>
 <td>对于小批次的 keys，查询效率高</td>
 <td>需要外部的系统，增加了运维压力</td>
 </tr>
@@ -314,6 +320,56 @@
 <li>由于 Bloom 假阳的可能，对匹配到的 Parquet 文件进一步的判断是否存在于该 Parquet 文件，最终形成形成的映射。</li>
 <li>将两份数据在对应的分区内，使用 HoodieKey 进行 LeftOuterJoin，即可将提取位置信息赋值至传入数据上。</li>
 </ol>
+<h5 id="Bucket-Index"><a href="#Bucket-Index" class="headerlink" title="Bucket Index"></a>Bucket Index</h5><p>简单 Hash 分桶策略：在建表时先预估表的单个分区数据存储大小，设置一个分桶数 numBuckets。并生成 n 个 File ID, 将 File ID 的前8位替换成 bucketId 的数字。在写入时，找到每条Record 对应的桶ID ，即可确定 RecordKey 跟 FileGroup的映射关系。将提取位置信息赋值至传入数据上。</p>
+
+
+<p>除了上述的简单分桶策略外，为解决无法动态调整桶的问题，又引入了一致性 Hash 解决方案：通过计算Hash(v) % 0xFFFF得到哈希值，该哈希值落入预先定义的范围内。然后将范围映射应用于哈希值以获得最终的桶。该图还演示了本地存储桶拆分过程，其中存储桶 #2 被拆分为两个子存储桶，并将存储桶总数增加 1。与传统的哈希方案相比，一致性哈希引入了额外的范围映射层，将哈希值和存储桶链接起来。</p>
+
+
+<table>
+<thead>
+<tr>
+<th>Config Name</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>hoodie.bucket.index.num.buckets</td>
+<td>256 (Optional)</td>
+<td>确定 hudi 表的桶数，每个分区分为N个桶。</td>
+</tr>
+<tr>
+<td>hoodie.bucket.index.hash.field</td>
+<td>RecordKey (Optional)</td>
+<td>索引键字段。应该是 RecordKey 字段的子集或等于 RecordKey 字段。默认为 RecordKey。</td>
+</tr>
+<tr>
+<td>hoodie.index.bucket.engine</td>
+<td>SIMPLE (Optional)</td>
+<td>Bucket Index 引擎类型，SIMPLE 和 CONSISTENT_HASHING（仅适用于MOR）</td>
+</tr>
+<tr>
+<td>hoodie.bucket.index.min.num.buckets</td>
+<td>N&#x2F;A (Required)</td>
+<td>一致性哈希时 hudi 表中桶数的下限。存储桶大小调整不能小于此最小限制。</td>
+</tr>
+<tr>
+<td>hoodie.bucket.index.max.num.buckets</td>
+<td>N&#x2F;A (Required)</td>
+<td>一致性哈希时 hudi 表中桶数的上限。存储桶大小调整不能高于此最大限制。</td>
+</tr>
+<tr>
+<td>hoodie.bucket.index.merge.threshold</td>
+<td>0.2 (Optional)</td>
+<td>一致性哈希时合并存储桶阈值。如果文件切片大小小于 hoodie.parquet.max.file.size * 阈值，则它将被视为合并候选者。</td>
+</tr>
+<tr>
+<td>hoodie.bucket.index.split.threshold</td>
+<td>2.0 (Optional)</td>
+<td>一致性哈希时分裂存储桶阈值。如果文件切片大小大于 hoodie.parquet.max.file.size * 阈值，则它将被视为合并候选者。</td>
+</tr>
+</tbody></table>
 <h5 id="Multi-Modal-Index"><a href="#Multi-Modal-Index" class="headerlink" title="Multi-Modal Index"></a>Multi-Modal Index</h5><p>Hudi 在快速更新插入时充分的利用了索引的优势，但在查询尚未利用这些优势。在 Hudi 0.11.0版本中，通过增强元数据表实现了 Multi-Modal Index，以优化查询和写入事务的性能，特别是对于大型的宽表。同其他系统一样，例如 Kafka 将 consumer_offset 存储成一个 topic ，HBase 将表信息存储成一张 meta 表，Hudi 也将具有 Multi-Modal Index 的 MetaData 存储成了内部的一张 MOR 表。目前该表具有 file 、column_stats 、bloom_filter 三个分区。</p>
 <table>
 <thead>
