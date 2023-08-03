@@ -124,7 +124,7 @@
   <nav class="site-state">
       <div class="site-state-item site-state-posts">
         <a href="/archives/">
-          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-count">7</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -152,6 +152,98 @@
     </div>
 
     <div class="main-inner index posts-expand">
+
+    
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="">
+    <link itemprop="mainEntityOfPage" href="https://zhaomoran.github.io/2023/08/01/2023-08-02-Hudi-Payload%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpeg">
+      <meta itemprop="name" content="Moran">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Coding Tech">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="undefined | Coding Tech">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          <a href="/2023/08/01/2023-08-02-Hudi-Payload%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/" class="post-title-link" itemprop="url">Hudi Payload机制探析</a>
+        </h2>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2023-08-02 05:54:00" itemprop="dateCreated datePublished" datetime="2023-08-02T05:54:00+08:00">2023-08-02</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-08-03 21:33:26" itemprop="dateModified" datetime="2023-08-03T21:33:26+08:00">2023-08-03</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-folder"></i>
+      </span>
+      <span class="post-meta-item-text">分类于</span>
+        <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+          <a href="/categories/%E5%A4%A7%E6%95%B0%E6%8D%AE/" itemprop="url" rel="index"><span itemprop="name">大数据</span></a>
+        </span>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+          <p>Apache Hudi的Payload是一种可扩展的数据处理机制，通过不同的 Payload 我们可以实现复杂场景的定制化数据写入方式，大大增加了数据处理的灵活性。Hudi Payload在写入和读取Hudi表时对数据进行去重、过滤、合并等操作。本文我们会深入探讨Hudi Payload的机制和不同Payload的区别及使用场景。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2023/08/01/2023-08-02-Hudi-Payload%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+        <div class="post-eof"></div>
+      
+    </footer>
+  </article>
+</div>
+
+
+
 
     
 
@@ -197,7 +289,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-07-29 17:25:23" itemprop="dateModified" datetime="2023-07-29T17:25:23+08:00">2023-07-29</time>
+      <time title="修改时间：2023-08-03 21:33:26" itemprop="dateModified" datetime="2023-08-03T21:33:26+08:00">2023-08-03</time>
     </span>
     <span class="post-meta-item">
       <span class="post-meta-item-icon">
@@ -219,7 +311,7 @@
     
     
     <div class="post-body" itemprop="articleBody">
-          <p>Hudi 通过索引机制提供高效的 Upsert&#x2F;Delete 操作，它维护着 HoodieKey 和 FileID 之间的映射关系。在 Upsert 写时，利用索引快速确认记录是新增（I）还是更新（U）以及需要更新文件的位置，以消除不必要的读写。</p>
+          <p>Hudi通过索引机制提供高效的Upsert&#x2F;Delete操作，它维护着HoodieKey和FileID之间的映射关系。在Upsert写时，利用索引快速确认记录是新增（I）还是更新（U）以及需要更新文件的位置，以消除不必要的读写。</p>
           <!--noindex-->
             <div class="post-button">
               <a class="btn" href="/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/#more" rel="contents">
@@ -289,7 +381,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-07-29 17:25:23" itemprop="dateModified" datetime="2023-07-29T17:25:23+08:00">2023-07-29</time>
+      <time title="修改时间：2023-08-03 21:33:26" itemprop="dateModified" datetime="2023-08-03T21:33:26+08:00">2023-08-03</time>
     </span>
     <span class="post-meta-item">
       <span class="post-meta-item-icon">
@@ -381,7 +473,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-07-29 17:25:23" itemprop="dateModified" datetime="2023-07-29T17:25:23+08:00">2023-07-29</time>
+      <time title="修改时间：2023-08-03 21:33:26" itemprop="dateModified" datetime="2023-08-03T21:33:26+08:00">2023-08-03</time>
     </span>
 
   
@@ -464,7 +556,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-07-29 17:25:23" itemprop="dateModified" datetime="2023-07-29T17:25:23+08:00">2023-07-29</time>
+      <time title="修改时间：2023-08-03 21:33:26" itemprop="dateModified" datetime="2023-08-03T21:33:26+08:00">2023-08-03</time>
     </span>
 
   
@@ -547,7 +639,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-07-29 17:25:23" itemprop="dateModified" datetime="2023-07-29T17:25:23+08:00">2023-07-29</time>
+      <time title="修改时间：2023-08-03 21:33:26" itemprop="dateModified" datetime="2023-08-03T21:33:26+08:00">2023-08-03</time>
     </span>
     <span class="post-meta-item">
       <span class="post-meta-item-icon">
@@ -641,7 +733,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-07-29 17:25:23" itemprop="dateModified" datetime="2023-07-29T17:25:23+08:00">2023-07-29</time>
+      <time title="修改时间：2023-08-03 21:33:26" itemprop="dateModified" datetime="2023-08-03T21:33:26+08:00">2023-08-03</time>
     </span>
     <span class="post-meta-item">
       <span class="post-meta-item-icon">
