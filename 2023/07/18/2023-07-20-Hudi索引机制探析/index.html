@@ -32,7 +32,7 @@
 <meta property="og:image" content="https://zhaomoran.github.io/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/basic_bucket_hashing-1690619429869-5.png">
 <meta property="og:image" content="https://zhaomoran.github.io/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/consistent_hashing.png">
 <meta property="article:published_time" content="2023-07-18T21:57:00.000Z">
-<meta property="article:modified_time" content="2023-08-04T02:17:18.911Z">
+<meta property="article:modified_time" content="2023-08-10T12:31:22.638Z">
 <meta property="article:author" content="Moran">
 <meta property="article:tag" content="Hudi">
 <meta property="article:tag" content="数据湖">
@@ -209,7 +209,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-08-04 10:17:18" itemprop="dateModified" datetime="2023-08-04T10:17:18+08:00">2023-08-04</time>
+      <time title="修改时间：2023-08-10 20:31:22" itemprop="dateModified" datetime="2023-08-10T20:31:22+08:00">2023-08-10</time>
     </span>
     <span class="post-meta-item">
       <span class="post-meta-item-icon">
@@ -234,7 +234,7 @@
         <p>Hudi通过索引机制提供高效的Upsert&#x2F;Delete操作，它维护着HoodieKey和FileID之间的映射关系。在Upsert写时，利用索引快速确认记录是新增（I）还是更新（U）以及需要更新文件的位置，以消除不必要的读写。</p>
 <span id="more"></span>
 
-<h5 id="Overview"><a href="#Overview" class="headerlink" title="Overview"></a>Overview</h5><p>索引具体过程是将给定的HoodieKey（RecordKey+PartitionPath）与FileID（文件组ID）建立唯一映射。这种映射关系在数据第一次写入文件后保持不变。所以，一个 文件组 包含了一组记录的所有版本。</p>
+<h5 id="Overview"><a href="#Overview" class="headerlink" title="Overview"></a>Overview</h5><p>索引具体过程是将给定的HoodieKey（RecordKey+PartitionPath）与FileID（文件组ID）建立唯一映射。这种映射关系在数据第一次写入文件后保持不变。所以，一个 文件组包含了一组记录的所有版本。</p>
 <p>下图为例，白色是基本文件，黄色是更新数据。左边为Hudi模型，右边为Hive ACID模型。在不具备索引的Hive ACID模型中，需要全局尝试合并，把增量文件和每一个基本文件进行合并(100 + 25 * 8) * 4 &#x3D; 1200MB，在具备索引的Hudi模型中，仅需按照FileGroup分组后再合并100 * 4 + 25 * 8&#x3D; 600MB。可以发现索引大大降低了了合并的成本。</p>
 <img data-src="/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/with-and-without-index-81d481917e61e4cd1be2426c12994b8b.png" class="" title="Fact table">
 
@@ -251,43 +251,32 @@
 </tr>
 </thead>
 <tbody><tr>
-<td>Bloom</td>
-<td>每个Parquet文件维护一个BloomFilter，在索引查找阶段，把所有可能更新的分区的文件的BloomFilter加载进来，用来判断RecordKey是否存在</td>
-<td>效率高，不依赖外部系统</td>
-<td>假阳性问题，还需回溯原文件再查找一遍</td>
-</tr>
-<tr>
 <td>Simple</td>
-<td>在索引查找阶段，把所有可能更新的分区的文件的HoodieKey和FileID列加载进来，使用LeftOuterJoin判断RecordKey是否存在</td>
+<td>在索引查找阶段，把所有可能更新的分区的文件的HoodieKey和FileID列加载进来，使用LeftOuterJoin判断RecordKey是否存在。</td>
 <td>实现最简单，无需额外的资源</td>
 <td>性能比较差</td>
 </tr>
 <tr>
+<td>Bloom</td>
+<td>每个Parquet文件维护一个BloomFilter，在索引查找阶段，把所有可能更新的分区的文件的BloomFilter加载进来，用来判断RecordKey是否存在。</td>
+<td>效率高，不依赖外部系统</td>
+<td>假阳性问题，还需回溯原文件再查找一遍</td>
+</tr>
+<tr>
 <td>Bucket</td>
-<td>利用Hash分区计算出RecordKey需要写入或更新的文件，避免索引阶段的IO扫描</td>
+<td>利用Hash分区计算出RecordKey需要写入或更新的文件，避免索引阶段的IO扫描。</td>
 <td>效率高</td>
-<td></td>
+<td>容易造成全量数据更新</td>
 </tr>
 <tr>
 <td>HBase</td>
-<td>维护每一个RecordKey的PartitionPath和FileGroup，在索引查找阶段所有Task向HBase发送BatchGet请求，获取RecordKey的Mapping 信息。</td>
+<td>维护每一个RecordKey的PartitionPath和FileGroup，在索引查找阶段所有Task向HBase发送BatchGet请求，获取RecordKey的Mapping信息。</td>
 <td>对于小批次的keys，查询效率高</td>
 <td>需要外部的系统，增加了运维压力</td>
-</tr>
-<tr>
-<td>Custom</td>
-<td>自定义索引</td>
-<td></td>
-<td></td>
 </tr>
 </tbody></table>
 <p>全局索引：全局索引在全表的所有分区范围下强制要求键的唯一性，也就是确保对给定的键有且只有一个对应的记录。全局索引提供了更强的保证，但是随着表增大，Upsert&#x2F;Delete操作损失的性能越高，因此更适用于小表。</p>
 <p>非全局索引：默认的索引实现，只能保证数据在分区的唯一性。非全局索引依靠写入器为同一个记录的 update&#x2F;delete 提供一致的分区路径，大幅提高了效率，更适用于大表。从索引的维护成本和写入性能的角度考虑，维护一个全局索引的难度更大，对写入性能的影响也更大，所以需要使用非全局索引。</p>
-<ul>
-<li>事实表的延迟更新：例如交易订单，这些表通常会随着时间而不断增长，较少的长尾更新会指向较旧的数据，这要么是由于稍后的交易结算&#x2F;数据更正所致。换句话说，大多数更新都会进入最新的分区，而很少有更新会进入较旧的分区。适用于Bloom。</li>
-<li>事件表的去重：例如电表度数，事件通常是事实表大小的 10-100 倍，并且通常将“时间”视为一等公民。重复事件大多处于入湖前，且插入和更新仅跨越最后几个时间分区中。适用于Bloom。</li>
-<li>维度表的随机更删：例如商家信息，这些类型的表通常包含高维数据并保存参考数据，更新分布在从旧到新的数据集中的许多分区和数据文件中。通常，这些表无分区。适用于Simple。</li>
-</ul>
 <table>
 <thead>
 <tr>
@@ -299,33 +288,35 @@
 <tbody><tr>
 <td>hoodie.index.type</td>
 <td>N&#x2F;A (必选)</td>
-<td>可选值：SIMPLE、GLOBAL_SIMPLE、BLOOM、GLOBAL_BLOOM、INMEMORY、HBASE、BUCKET、FLINK_STATE、RECORD_INDEX <br>Spark默认：SIMPLE，FLINK默认：BLOOM，JAVA默认：BLOOM</td>
+<td>可选值：SIMPLE、GLOBAL_SIMPLE、BLOOM、GLOBAL_BLOOM、INMEMORY、HBASE、BUCKET、FLINK_STATE、RECORD_INDEX 。<br>Spark默认：SIMPLE，FLINK默认：BLOOM，JAVA默认：BLOOM。</td>
 </tr>
 <tr>
 <td>hoodie.index.class</td>
 <td>可选</td>
-<td>用户定义索引类的完整路径，并且必须是HoodieIndex类的子类。如果指定，它将优先于 hoodie.index.type 配置</td>
+<td>用户定义索引类的完整路径，并且必须是HoodieIndex类的子类。如果指定，它将优先于 hoodie.index.type 配置。</td>
 </tr>
 </tbody></table>
 <h5 id="Simple-Index"><a href="#Simple-Index" class="headerlink" title="Simple Index"></a>Simple Index</h5><p>核心：利用Parquet列式存储的优势，仅需扫描HooieKey和FileID两列少量的数据，即可用于索引查找。</p>
 <ol>
 <li>对于传入的Upserts数据，提取分区路径和主键值，组成HoodieKey。形成HoodieKey到HoodieRecord的映射。</li>
-<li>从数据湖存储中根据分区路径获取所有Parquet文件中的HooieKey和FileID数据。形成HoodieKey到HoodieRecordLocation的映射。</li>
-<li>将两份数据在对应的分区内，使用HoodieKey进行LeftOuterJoin，即可将提取位置信息赋值至传入数据上。</li>
+<li>从数据湖存储中获取写入分区下Parquet文件中的HooieKey和FileID数据。形成HoodieKey到HoodieRecordLocation的映射。</li>
+<li>将两份数据使用HoodieKey进行LeftOuterJoin，即可将提取位置信息赋值至传入数据上。</li>
 </ol>
 <h5 id="Bloom-Index"><a href="#Bloom-Index" class="headerlink" title="Bloom Index"></a>Bloom Index</h5><p>核心：使用Parquet页脚中的Bloom和Max-Min数据进行裁剪和过滤减少索引查找时的数据的扫描量。</p>
 <ol>
-<li>从数据湖存储中根据分区路径获取所有Parquet文件的页脚数据。页脚数据包含该文件中HoodieKey的Bloom和Max-Min。</li>
+<li>从数据湖存储中获取写入分区下Parquet文件的页脚数据，页脚数据包含该文件中HoodieKey的Bloom和Max-Min。</li>
 <li>依据页脚数据中Hoodiekey的最大最小值构造线段树，快速的确认传入数据可能存在的Parquet文件。</li>
-<li>再利用页脚数据中BloomFilter，快速的确认传入数据可能存在的Parquet文件。</li>
+<li>再利用页脚数据中的BloomFilter快速确认传入数据可能存在的Parquet文件。</li>
 <li>由于Bloom假阳的可能，对匹配到的Parquet文件进一步的判断是否存在于该Parquet文件，最终形成形成的映射。</li>
 </ol>
-<h5 id="Bucket-Index"><a href="#Bucket-Index" class="headerlink" title="Bucket Index"></a>Bucket Index</h5><p>简单 Hash 分桶策略：在建表时先预估表的单个分区数据存储大小，设置一个分桶数numBuckets。并生成N个File ID, 将File ID的前8位替换成BucketId的数字。在写入时，找到每条Record对应的桶ID，即可确定RecordKey跟FileGroup的映射关系。将提取位置信息赋值至传入数据上。</p>
+<h5 id="Bucket-Index"><a href="#Bucket-Index" class="headerlink" title="Bucket Index"></a>Bucket Index</h5><p>核心：利用Hash分桶策略，将RecordKey映射到特定的Bucket桶上，避免索引阶段的IO扫描。</p>
+<ul>
+<li><p>简单Hash分桶：在建表时先预估表的单个分区数据存储大小，设置一个分桶数numBuckets。并生成N个FileID, 将FileID的前8位替换成BucketID的数字。在写入时，找到每条Record对应的桶ID，即可确定RecordKey跟FileGroup的映射关系。将提取位置信息赋值至传入数据上。</p>
 <img data-src="/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/basic_bucket_hashing-1690619429869-5.png" class="" title="bucket index">
-
-<p>除了上述的简单分桶策略外，为解决无法动态调整桶的问题，又引入了一致性Hash解决方案：通过计算Hash(v) % 0xFFFF得到哈希值，该哈希值落入预先定义的范围内。然后将范围映射应用于哈希值以获得最终的桶。该图还演示了本地存储桶拆分过程，其中存储桶#2被拆分为两个子存储桶，并将存储桶总数增加1。与传统的哈希方案相比，一致性哈希引入了额外的范围映射层，将哈希值和存储桶链接起来。</p>
-<img data-src="/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/consistent_hashing.png" class="" title="consistent hashing index">
-
+</li>
+<li><p>一致性Hash分桶：除了上述的简单分桶策略外，为解决无法动态调整桶的问题，又引入了一致性Hash解决方案：通过计算Hash(v) % 0xFFFF得到哈希值，该哈希值落入预先定义的范围内。然后将范围映射应用于哈希值以获得最终的桶。该图还演示了本地存储桶拆分过程，其中存储桶#2被拆分为两个子存储桶，并将存储桶总数增加1。与传统的哈希方案相比，一致性哈希引入了额外的范围映射层，将哈希值和存储桶链接起来。</p>
+<img data-src="/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/consistent_hashing.png" class="" title="consistent hashing index"></li>
+</ul>
 <table>
 <thead>
 <tr>
@@ -347,7 +338,7 @@
 <tr>
 <td>hoodie.index.bucket.engine</td>
 <td>SIMPLE (Optional)</td>
-<td>Bucket Index 引擎类型，SIMPLE 和 CONSISTENT_HASHING（仅适用于MOR）</td>
+<td>Bucket Index 引擎类型，SIMPLE 和 CONSISTENT_HASHING（仅适用于MOR）。</td>
 </tr>
 <tr>
 <td>hoodie.bucket.index.min.num.buckets</td>
@@ -370,7 +361,7 @@
 <td>一致性哈希时分裂存储桶阈值。如果文件切片大小大于 hoodie.parquet.max.file.size * 阈值，则它将被视为合并候选者。</td>
 </tr>
 </tbody></table>
-<h5 id="Multi-Modal-Index"><a href="#Multi-Modal-Index" class="headerlink" title="Multi-Modal Index"></a>Multi-Modal Index</h5><p>Hudi 在快速更新插入时充分的利用了索引的优势，但在查询尚未利用这些优势。在Hudi 0.11.0版本中，通过增强元数据表实现了Multi-Modal Index，以优化查询和写入事务的性能，特别是对于大型的宽表。同其他系统一样，例如Kafka将<code>_consumer_offset</code>存储成一个Topic ，HBase将表信息存储成一张<code>hbase:meta</code>表，Hudi也将具有 Multi-Modal Index的MetaData存储成了内部的一张MOR表。目前该表具有file 、column_stats 、bloom_filter三个分区。</p>
+<h5 id="Multi-Modal-Index"><a href="#Multi-Modal-Index" class="headerlink" title="Multi-Modal Index"></a>Multi-Modal Index</h5><p>Hudi 在快速更新插入时充分的利用了索引的优势，但在查询尚未利用这些优势。在Hudi 0.11.0版本中，通过增强元数据表实现了Multi-Modal Index，以优化查询和写入事务的性能，特别是对于大型的宽表。同其他系统一样，例如Kafka将<code>_consumer_offset</code>存储成一个Topic ，HBase将表信息存储成一张<code>hbase:meta</code>表，Hudi也将具有Multi-Modal Index的MetaData存储成了内部的一张MOR表。目前该表具有file 、column_stats 、bloom_filter三个分区。</p>
 <table>
 <thead>
 <tr>
@@ -382,7 +373,7 @@
 <tbody><tr>
 <td>hoodie.metadata.enable</td>
 <td>true (Optional)</td>
-<td>启用内部元数据表，该表提供表元数据，例如file 、column_stats 、bloom_filter</td>
+<td>启用内部元数据表，该表提供表元数据，例如file 、column_stats 、bloom_filter。</td>
 </tr>
 <tr>
 <td>hoodie.metadata.index.bloom.filter.enable</td>
@@ -394,32 +385,13 @@
 <td>false (Optional)</td>
 <td>在元数据表下启用用户数据文件的索引列范围过滤。启用后，元数据表将有一个分区来存储列范围，并将用于在索引查找期间修剪文件。</td>
 </tr>
+<tr>
+<td>hoodie.enable.data.skipping</td>
+<td>false (Optional)</td>
+<td>查询时启用数据跳过，允许查询利用column_stats跳过文件来减少查询扫描数据量。<strong>注意：不会利用bloom跳过。</strong></td>
+</tr>
 </tbody></table>
 <p>file的主要目的是消除“遍历文件”操作。读写数据时，会执行文件遍历操作来获取文件系统的当前视图，当数据集很大时，列出所有文件可能会成为性能瓶颈，但更重要的是，对于像AWS S3这样的云存储系统，大量的文件列出请求有时会被限制。元数据表将主动维护文件列表，并消除递归文件列表操作的需要。</p>
-<table>
-<thead>
-<tr>
-<th>Config Name</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>hoodie.metadata.enable</td>
-<td>true (Optional)</td>
-<td>启用内部元数据表，该表提供表元数据，例如file 、column_stats 、bloom_filter</td>
-</tr>
-<tr>
-<td>hoodie.metadata.index.bloom.filter.enable</td>
-<td>false (Optional)</td>
-<td>在元数据表下启用用户数据文件的索引布隆过滤器。启用后，元数据表将有一个分区来存储布隆过滤器索引，并将在索引查找期间使用。</td>
-</tr>
-<tr>
-<td>hoodie.metadata.index.column.stats.enable</td>
-<td>false (Optional)</td>
-<td>在元数据表键查找下启用用户数据文件的索引列范围。启用后，元数据表将有一个分区来存储列范围，并将用于在索引查找期间修剪文件。</td>
-</tr>
-</tbody></table>
 <p>column_stats主要包含了每个文件的列统计信息，例如某一列的Max-Min数据，通过这些统计数据来排除掉不需要读的文件，这样可以极大的提高查询速度。其中每个RecordKey是由列名称、分区名称和文件名称组成。</p>
 <table>
 <thead>
@@ -432,10 +404,10 @@
 <tbody><tr>
 <td>hoodie.metadata.index.column.stats.column.list</td>
 <td><code>N/A</code>(Required)</td>
-<td>启用列统计信息的列，默认所有的列都会呗索引</td>
+<td>启用列统计信息的列，默认所有的列都会被索引。</td>
 </tr>
 </tbody></table>
-<p>bloom_filter 分区取代了Footer 中的BloomFilter，在大表中可以大幅减少文件读取的时间。每条记录包含单个数据文件（Partition + Filename）的BloomFilter，支持PrefixLookup。</p>
+<p>bloom_filter分区取代了Footer中的BloomFilter，在大表中可以大幅减少文件读取的时间。每条记录包含单个数据文件（Partition + Filename）的BloomFilter，支持PrefixLookup。</p>
 <table>
 <thead>
 <tr>
@@ -447,7 +419,7 @@
 <tbody><tr>
 <td>hoodie.metadata.index.bloom.filter.column.list</td>
 <td><code>N/A</code>(Required)</td>
-<td>启用布隆过滤器的列，默认为主键列</td>
+<td>启用布隆过滤器的列，默认为主键列。</td>
 </tr>
 </tbody></table>
 
