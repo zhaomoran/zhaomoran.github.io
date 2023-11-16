@@ -32,7 +32,7 @@
 <meta property="og:image" content="https://zhaomoran.github.io/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/basic_bucket_hashing-1690619429869-5.png">
 <meta property="og:image" content="https://zhaomoran.github.io/2023/07/18/2023-07-20-Hudi%E7%B4%A2%E5%BC%95%E6%9C%BA%E5%88%B6%E6%8E%A2%E6%9E%90/consistent_hashing.png">
 <meta property="article:published_time" content="2023-07-18T21:57:00.000Z">
-<meta property="article:modified_time" content="2023-08-10T12:31:22.638Z">
+<meta property="article:modified_time" content="2023-11-16T03:29:30.396Z">
 <meta property="article:author" content="Moran">
 <meta property="article:tag" content="Hudi">
 <meta property="article:tag" content="数据湖">
@@ -209,7 +209,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-08-10 20:31:22" itemprop="dateModified" datetime="2023-08-10T20:31:22+08:00">2023-08-10</time>
+      <time title="修改时间：2023-11-16 11:29:30" itemprop="dateModified" datetime="2023-11-16T11:29:30+08:00">2023-11-16</time>
     </span>
     <span class="post-meta-item">
       <span class="post-meta-item-icon">
@@ -361,7 +361,7 @@
 <td>一致性哈希时分裂存储桶阈值。如果文件切片大小大于 hoodie.parquet.max.file.size * 阈值，则它将被视为合并候选者。</td>
 </tr>
 </tbody></table>
-<h5 id="Multi-Modal-Index"><a href="#Multi-Modal-Index" class="headerlink" title="Multi-Modal Index"></a>Multi-Modal Index</h5><p>Hudi 在快速更新插入时充分的利用了索引的优势，但在查询尚未利用这些优势。在Hudi 0.11.0版本中，通过增强元数据表实现了Multi-Modal Index，以优化查询和写入事务的性能，特别是对于大型的宽表。同其他系统一样，例如Kafka将<code>_consumer_offset</code>存储成一个Topic ，HBase将表信息存储成一张<code>hbase:meta</code>表，Hudi也将具有Multi-Modal Index的MetaData存储成了内部的一张MOR表。目前该表具有file 、column_stats 、bloom_filter三个分区。</p>
+<h5 id="Multi-Modal-Index"><a href="#Multi-Modal-Index" class="headerlink" title="Multi-Modal Index"></a>Multi-Modal Index</h5><p>在Hudi 0.11.0版本中，通过增强元数据表实现了Multi-Modal Index，可以极大地提高索引的查找性能、使用数据跳过降低查询延迟。目前元数据表具有file 、column_stats 、bloom_filter三个分区。</p>
 <table>
 <thead>
 <tr>
@@ -388,11 +388,11 @@
 <tr>
 <td>hoodie.enable.data.skipping</td>
 <td>false (Optional)</td>
-<td>查询时启用数据跳过，允许查询利用column_stats跳过文件来减少查询扫描数据量。<strong>注意：不会利用bloom跳过。</strong></td>
+<td>查询时启用数据跳过，允许查询利用column_stats跳过文件来减少查询扫描数据量。<strong>注意：目前不会利用bloom进行跳过。</strong></td>
 </tr>
 </tbody></table>
 <p>file的主要目的是消除“遍历文件”操作。读写数据时，会执行文件遍历操作来获取文件系统的当前视图，当数据集很大时，列出所有文件可能会成为性能瓶颈，但更重要的是，对于像AWS S3这样的云存储系统，大量的文件列出请求有时会被限制。元数据表将主动维护文件列表，并消除递归文件列表操作的需要。</p>
-<p>column_stats主要包含了每个文件的列统计信息，例如某一列的Max-Min数据，通过这些统计数据来排除掉不需要读的文件，这样可以极大的提高查询速度。其中每个RecordKey是由列名称、分区名称和文件名称组成。</p>
+<p>column_stats主要包含了每个文件的列统计信息，例如某一列的Max-Min数据，通过这些统计数据来排除掉不需要读的文件，这样可以极大的提高查询速度。每条记录的RecordKey是由列名称、分区名称和文件名称组成，Value为列统计信息。</p>
 <table>
 <thead>
 <tr>
@@ -407,7 +407,7 @@
 <td>启用列统计信息的列，默认所有的列都会被索引。</td>
 </tr>
 </tbody></table>
-<p>bloom_filter分区取代了Footer中的BloomFilter，在大表中可以大幅减少文件读取的时间。每条记录包含单个数据文件（Partition + Filename）的BloomFilter，支持PrefixLookup。</p>
+<p>bloom_filter分区取代了Footer中的BloomFilter，在大表中可以大幅减少Bloom文件读取的时间。每条记录的RecordKey由分区名称和文件名称组成，Value为该文件BloomFilter的数据。</p>
 <table>
 <thead>
 <tr>
